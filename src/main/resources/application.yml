@@ -1,0 +1,55 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
+spring:
+  application:
+    name: atomic-focus
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: "jdbc:mysql://dbconn.sealoshzh.site:42698/atomic_focus?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&createDatabaseIfNotExist=true"
+    username: root
+    password: ttp2gpqs
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+  jackson:
+    # 与 API.md 一致：响应字段统一 snake_case（如 trace_id、page_size）
+    property-naming-strategy: SNAKE_CASE
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+    default-property-inclusion: non_null
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    # 避免默认刷 SQL 到控制台；需要排错时可改为 org.apache.ibatis.logging.stdout.StdOutImpl
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+  global-config:
+    db-config:
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+  mapper-locations: classpath*:mapper/**/*.xml
+
+logging:
+  level:
+    com.atomic.focus: info
+    com.baomidou.mybatisplus: warn
+
+# 应用配置
+atomic:
+  jwt:
+    secret: AtomicFocus_Jwt_Secret_Key_For_HS256_At_Least_32_Bytes_Long_2026
+    access-token-expire-seconds: 7200
+    refresh-token-expire-seconds: 2592000
+  cors:
+    allowed-origins: "*"
