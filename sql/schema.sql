@@ -16,6 +16,7 @@ DROP TABLE IF EXISTS `user`;
 CREATE TABLE `user` (
     `id`             VARCHAR(32)  NOT NULL COMMENT '用户ID（u_xxx）',
     `phone`          VARCHAR(32)  DEFAULT NULL COMMENT '手机号（含国家码）',
+    `password_hash`  VARCHAR(255) DEFAULT NULL COMMENT 'bcrypt 等密码哈希（正式账号）',
     `nickname`       VARCHAR(64)  NOT NULL DEFAULT '' COMMENT '昵称',
     `avatar`         VARCHAR(512) DEFAULT NULL COMMENT '头像 URL',
     `is_guest`       TINYINT(1)   NOT NULL DEFAULT 1 COMMENT '是否游客 0否 1是',

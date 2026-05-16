@@ -1209,12 +1209,13 @@ missed  --[补打卡]--> done / late
 | 1002 | 401  | Token 过期，需 refresh |
 | 1003 | 403  | 无权限 |
 | 1004 | 429  | 频率限制 |
-| 2001 | 200  | 警告：每日时长超过 10 分钟（非阻断） |
+| 2001 | — | （历史预留）服务端已不再下发 |
 | 2002 | 400  | 参数校验失败 |
 | 2003 | 404  | 资源不存在 |
 | 2004 | 409  | 资源冲突（如 client_op_id 重复且参数不一致） |
 | 2010 | 400  | 延迟打卡超出允许时间窗（>1h） |
 | 2011 | 400  | 重复操作（同日已打卡且参数完全一致，幂等忽略） |
+| 2012 | 400  | 打卡时长未达到当日最低有效时长（⌈有效每日目标/2⌉，见 §17） |
 | 2020 | 400  | 阶段日期范围非法 |
 | 2030 | 409  | 特殊场景重叠 |
 | 2031 | 400  | 暂停场景超过 3 天上限 |
@@ -1228,7 +1229,7 @@ missed  --[补打卡]--> done / late
 
 | 规则 | 涉及接口 | 实现位置 |
 |------|---------|---------|
-| **R01** 每日初始时长 ≤ 10 分钟，超过仅提示 | `POST /goals`、`PATCH /goals/{id}` | 校验 `daily_habit.duration > 10` 时返回 `code=2001` warning |
+| **R01** 创建目标时长由用户自定；服务端不因「>10 分钟」另行告警 | `POST /goals`、`PATCH /goals/{id}` | 不回 `2001`；打卡半数规则见 §17 |
 | **R02** 未打卡可选扣进度（默认 1–2%），最低 0% | `POST /goals/{id}/checkins/missed` | `deduct_progress=true` 时按 `default_progress_deduction` 扣 `manual_deduction` |
 | **R03** 暂停最多 3 天 | `POST /scenes` | 校验 `mode=pause` && 区间 ≤ 3 天 |
 | **R04** 进度达 100% 即固化，可继续打卡 | `POST /goals/{id}/checkins`（响应含 `habit_fixed`） | 服务端原子事务：`progress >= 100 && !fixed` 时置 `fixed=true` 并下发推送 |
@@ -1241,3 +1242,25 @@ missed  --[补打卡]--> done / late
 - 若该目标"最近连续打卡天数"是 7 的整数倍，则将 `daily_habit.duration` 增加 `level_up_step` 分钟
 - 推送 `level_up` 事件，附带前后时长对比
 - 写入审计日志 `audit_logs`，便于复盘报告引用
+
+
+---
+
+## 17. 版本迭代说明（打卡半数时长 · 2026-05-16）
+
+> 对齐 PRD §7.5。不改变打卡 REST 路径；在 **`POST /api/v1/goals/{goal_id}/checkins`** 及 **`POST /api/v1/timer/{session_id}/finish`** 提交的 **`duration`**（整数分钟）上增加服务端校验。
+
+### 17.1 `effective_daily_target_minutes`（当日有效目标）
+
+- 默认等于目标的 **`daily_habit.duration`**（至少 **1**）。
+- 若打卡日当天存在生效的特殊场景 **`mode=shorten`**：`effective = min(习惯每日时长, shorten_to)`；多条 shorten 重叠时再取更小值。
+
+### 17.2 完成打卡最低时长（`status` = `done` | `late`）
+
+**`minimum_completed_minutes = max(1, ⌈effective_daily_target_minutes / 2⌉)`**
+
+须 **`duration ≥ minimum_completed_minutes`**，否则 **`code=2012`**，HTTP **400**。
+
+### 17.3 `GET /api/v1/checkins/today` 清单扩展字段
+
+每条目标增加：`effective_daily_target_minutes`、`minimum_completed_minutes`，供前端在完成前拦截。

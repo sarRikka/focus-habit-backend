@@ -12,6 +12,8 @@ public interface AuthService {
 
     AuthVO phoneLogin(PhoneLoginDTO dto);
 
+    AuthVO register(PhoneLoginDTO dto);
+
     void sendCode(SendCodeDTO dto);
 
     AuthVO refresh(RefreshTokenDTO dto);

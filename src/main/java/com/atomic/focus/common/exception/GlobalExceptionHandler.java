@@ -79,7 +79,7 @@ public class GlobalExceptionHandler {
             case 1001, 1002 -> HttpStatus.UNAUTHORIZED;
             case 1003 -> HttpStatus.FORBIDDEN;
             case 1004 -> HttpStatus.TOO_MANY_REQUESTS;
-            case 2002, 2010, 2011, 2020, 2031, 2040 -> HttpStatus.BAD_REQUEST;
+            case 2002, 2010, 2011, 2012, 2020, 2031, 2040 -> HttpStatus.BAD_REQUEST;
             case 2003 -> HttpStatus.NOT_FOUND;
             case 2004, 2030 -> HttpStatus.CONFLICT;
             case 5002 -> HttpStatus.SERVICE_UNAVAILABLE;

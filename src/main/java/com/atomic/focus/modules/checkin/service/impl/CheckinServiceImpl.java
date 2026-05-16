@@ -8,6 +8,7 @@ import com.atomic.focus.modules.checkin.dto.MissedCheckinDTO;
 import com.atomic.focus.modules.checkin.entity.Checkin;
 import com.atomic.focus.modules.checkin.mapper.CheckinMapper;
 import com.atomic.focus.modules.checkin.service.CheckinService;
+import com.atomic.focus.modules.checkin.service.EffectiveDailyTargetMinutesResolver;
 import com.atomic.focus.modules.checkin.service.EncouragementService;
 import com.atomic.focus.modules.checkin.service.ProgressCalculator;
 import com.atomic.focus.modules.checkin.vo.CalendarVO;
@@ -60,6 +61,7 @@ public class CheckinServiceImpl implements CheckinService {
     private final SettingsService settingsService;
     private final ProgressCalculator progressCalculator;
     private final EncouragementService encouragementService;
+    private final EffectiveDailyTargetMinutesResolver effectiveDailyTargetMinutesResolver;
 
     @Override
     @Transactional
@@ -73,6 +75,14 @@ public class CheckinServiceImpl implements CheckinService {
             throw new BusinessException(ResultCode.PARAM_INVALID, "status 仅支持 done | late");
         }
         LocalDate date = dto.getDate() == null ? LocalDate.now() : dto.getDate();
+
+        int effectiveDaily = effectiveDailyTargetMinutesResolver.resolveEffectiveDailyTarget(goal, date, userId);
+        int minCompleted = EffectiveDailyTargetMinutesResolver.minimumCompletedMinutes(effectiveDaily);
+        if (dto.getDuration() == null || dto.getDuration() < minCompleted) {
+            throw new BusinessException(ResultCode.CHECKIN_MIN_DURATION_NOT_MET,
+                    String.format("打卡时长至少 %d 分钟（当日有效目标 %d 分钟的一半向上取整）",
+                            minCompleted, effectiveDaily));
+        }
 
         // client_op_id 幂等
         if (dto.getClientOpId() != null) {
@@ -248,6 +258,9 @@ public class CheckinServiceImpl implements CheckinService {
             it.setGoalIcon(g.getIcon());
             it.setDailyHabit(g.getDhDescription());
             it.setDurationTarget(g.getDhDuration());
+            int effective = effectiveDailyTargetMinutesResolver.resolveEffectiveDailyTarget(g, date, userId);
+            it.setEffectiveDailyTargetMinutes(effective);
+            it.setMinimumCompletedMinutes(EffectiveDailyTargetMinutesResolver.minimumCompletedMinutes(effective));
             it.setChecked(isChecked);
             items.add(it);
         }

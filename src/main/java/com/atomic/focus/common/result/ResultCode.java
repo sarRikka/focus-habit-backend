@@ -12,13 +12,14 @@ public enum ResultCode {
     FORBIDDEN(1003, "无权限"),
     RATE_LIMIT(1004, "请求过于频繁"),
 
-    DURATION_WARNING(2001, "每日时长超过 10 分钟"),
     PARAM_INVALID(2002, "参数校验失败"),
     NOT_FOUND(2003, "资源不存在"),
     CONFLICT(2004, "资源冲突"),
 
     LATE_OUT_OF_WINDOW(2010, "延迟打卡超出允许时间窗"),
     DUPLICATE_OP(2011, "重复操作（幂等忽略）"),
+    /** PRD §7.5：`done`/`late` 提交时长未达到 ⌈有效每日目标/2⌉ */
+    CHECKIN_MIN_DURATION_NOT_MET(2012, "打卡时长未达到当日最低有效时长"),
     PHASE_DATE_INVALID(2020, "阶段日期范围非法"),
     SCENE_OVERLAP(2030, "特殊场景重叠"),
     SCENE_PAUSE_LIMIT(2031, "暂停场景超过 3 天上限"),

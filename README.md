@@ -105,7 +105,7 @@ curl -X POST http://localhost:8080/api/v1/goals \
 
 | 规则 | 实现位置 |
 |------|---------|
-| **R01** 每日时长 > 10 分钟仅提示不阻断 | `GoalServiceImpl.create` 返回 `code=2001` 警告 |
+| **R01** （现行）服务端不因每日时长阈值另行校验或警告 | `POST /goals` 创建目标始终 `code=0`（见 API 附录 A） |
 | **R02** 漏打卡可选扣进度，最低 0% | `CheckinServiceImpl.missed` + `manual_deduction` 字段累计 |
 | **R03** 暂停场景 ≤ 3 天 | `SceneServiceImpl.validate` |
 | **R04** 进度 100% 即固化、可继续打卡 | `CheckinServiceImpl.checkin` 中原子置 `fixed=true` 并解锁标签 |

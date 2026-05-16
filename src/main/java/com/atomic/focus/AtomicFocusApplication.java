@@ -12,6 +12,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @SpringBootApplication
 @EnableScheduling
 @MapperScan(basePackages = "com.atomic.focus.modules", markerInterface = BaseMapper.class)
+@MapperScan(basePackages = "com.atomic.focus.modules.auth.mapper")
 public class AtomicFocusApplication {
 
     public static void main(String[] args) {

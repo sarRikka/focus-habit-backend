@@ -80,14 +80,12 @@ public class GoalServiceImpl implements GoalService {
         goal.setFixed(false);
         goal.setClientOpId(dto.getClientOpId());
 
-        boolean durationWarn = false;
         if (dto.getDailyHabit() != null) {
             DailyHabitDTO dh = dto.getDailyHabit();
             goal.setDhDescription(dh.getDescription());
             goal.setDhDuration(dh.getDuration() == null ? 10 : dh.getDuration());
             goal.setDhAutoLevelUp(Boolean.TRUE.equals(dh.getAutoLevelUp()));
             goal.setDhLevelUpStep(dh.getLevelUpStep() == null ? 1 : dh.getLevelUpStep());
-            durationWarn = goal.getDhDuration() != null && goal.getDhDuration() > 10;
         } else {
             goal.setDhDuration(10);
             goal.setDhAutoLevelUp(false);
@@ -119,7 +117,7 @@ public class GoalServiceImpl implements GoalService {
         }
 
         GoalVO vo = assemble(goal, false);
-        return durationWarn ? R.warn(ResultCode.DURATION_WARNING, vo) : R.ok(vo);
+        return R.ok(vo);
     }
 
     @Override

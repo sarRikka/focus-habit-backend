@@ -30,10 +30,16 @@ public class AuthController {
         return R.ok(authService.guestLogin(dto));
     }
 
-    /** 手机号登录/注册 */
+    /** 手机号 + 密码登录 */
     @PostMapping("/login")
     public R<AuthVO> login(@RequestBody @Valid PhoneLoginDTO dto) {
         return R.ok(authService.phoneLogin(dto));
+    }
+
+    /** 手机号注册（可与游客数据合并）；参见 API §2.3 */
+    @PostMapping("/register")
+    public R<AuthVO> register(@RequestBody @Valid PhoneLoginDTO dto) {
+        return R.ok(authService.register(dto));
     }
 
     /** 发送短信验证码 */

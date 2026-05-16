@@ -55,12 +55,4 @@ public class R<T> {
         r.message = message;
         return r;
     }
-
-    public static <T> R<T> warn(ResultCode code, T data) {
-        R<T> r = new R<>();
-        r.code = code.getCode();
-        r.message = code.getMessage();
-        r.data = data;
-        return r;
-    }
 }

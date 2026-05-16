@@ -20,6 +20,9 @@ public class User extends BaseEntity {
 
     private String phone;
 
+    @TableField("password_hash")
+    private String passwordHash;
+
     private String nickname;
 
     private String avatar;

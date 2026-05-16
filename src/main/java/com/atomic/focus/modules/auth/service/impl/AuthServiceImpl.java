@@ -9,6 +9,7 @@ import com.atomic.focus.modules.auth.dto.PhoneLoginDTO;
 import com.atomic.focus.modules.auth.dto.RefreshTokenDTO;
 import com.atomic.focus.modules.auth.dto.SendCodeDTO;
 import com.atomic.focus.modules.auth.service.AuthService;
+import com.atomic.focus.modules.auth.service.GuestMergeService;
 import com.atomic.focus.modules.auth.vo.AuthVO;
 import com.atomic.focus.modules.settings.service.SettingsService;
 import com.atomic.focus.modules.user.entity.User;
@@ -19,31 +20,32 @@ import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 
 /**
- * 认证服务实现：游客登录、手机号登录、Token 刷新。
- *
- * 注意：
- * - 短信验证码当前使用固定 "123456" 进行联调；生产环境应接入真实短信服务并使用 Redis 校验。
- * - 数据合并（merge_guest_user_id）当前以接管用户身份的方式实现：将该游客账号转为正式用户。
+ * 认证服务：游客、手机号密码注册/登录、Token 刷新；游客合并见 API.md §15。
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
 
+    private static final String LOGIN_FAILED_MSG = "手机号或密码错误";
+    /** 可选短信验证码联调占位；当前 Web 走密码链路，一般不调用 */
     private static final String DEMO_CODE = "123456";
 
     private final UserMapper userMapper;
     private final SettingsService settingsService;
     private final JwtUtil jwtUtil;
+    private final PasswordEncoder passwordEncoder;
+    private final GuestMergeService guestMergeService;
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     public AuthVO guestLogin(GuestLoginDTO dto) {
         User user = null;
         if (dto != null && dto.getDeviceId() != null && !dto.getDeviceId().isBlank()) {
@@ -59,40 +61,75 @@ public class AuthServiceImpl implements AuthService {
     }
 
     @Override
-    @Transactional
-    public AuthVO phoneLogin(PhoneLoginDTO dto) {
-        if (!DEMO_CODE.equals(dto.getCode())) {
-            throw new BusinessException(ResultCode.PARAM_INVALID, "验证码错误");
-        }
-
-        User user = userMapper.selectOne(new LambdaQueryWrapper<User>()
-                .eq(User::getPhone, dto.getPhone())
+    @Transactional(rollbackFor = Exception.class)
+    public AuthVO register(PhoneLoginDTO dto) {
+        String phone = normalizePhone(dto.getPhone());
+        User existing = userMapper.selectOne(new LambdaQueryWrapper<User>()
+                .eq(User::getPhone, phone)
                 .last("LIMIT 1"));
+        if (existing != null) {
+            throw new BusinessException(ResultCode.CONFLICT, "手机号已注册，请使用登录");
+        }
 
-        if (user == null) {
-            // 若提供 mergeGuestUserId，则把游客账号升级为正式账号
-            if (dto.getMergeGuestUserId() != null && !dto.getMergeGuestUserId().isBlank()) {
-                user = userMapper.selectById(dto.getMergeGuestUserId());
-                if (user != null && Boolean.TRUE.equals(user.getIsGuest())) {
-                    user.setIsGuest(false);
-                    user.setPhone(dto.getPhone());
-                    if (user.getNickname() == null || user.getNickname().isBlank()) {
-                        user.setNickname(defaultNickname(dto.getPhone()));
-                    }
-                    userMapper.updateById(user);
-                }
+        String mergeId = dto.getMergeGuestUserId();
+        if (mergeId != null && !mergeId.isBlank()) {
+            User guest = userMapper.selectById(mergeId.trim());
+            if (guest == null || !Boolean.TRUE.equals(guest.getIsGuest())) {
+                throw new BusinessException(ResultCode.PARAM_INVALID, "merge_guest_user_id 无效");
             }
-            if (user == null) {
-                user = createPhoneUser(dto.getPhone());
+            if (guest.getPhone() != null && !guest.getPhone().isBlank()) {
+                throw new BusinessException(ResultCode.PARAM_INVALID, "merge_guest_user_id 无效");
+            }
+            guest.setPhone(phone);
+            guest.setPasswordHash(passwordEncoder.encode(dto.getPassword()));
+            guest.setIsGuest(false);
+            if (guest.getNickname() != null && guest.getNickname().startsWith("访客")) {
+                guest.setNickname(defaultNickname(phone));
+            }
+            userMapper.updateById(guest);
+            return buildAuth(requireFreshUser(guest.getId()));
+        }
+
+        User user = createPhoneUser(phone, dto.getPassword());
+        return buildAuth(user);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public AuthVO phoneLogin(PhoneLoginDTO dto) {
+        String phone = normalizePhone(dto.getPhone());
+        User user = userMapper.selectOne(new LambdaQueryWrapper<User>()
+                .eq(User::getPhone, phone)
+                .last("LIMIT 1"));
+        if (user == null || user.getPasswordHash() == null || user.getPasswordHash().isBlank()) {
+            throw new BusinessException(ResultCode.UNAUTHORIZED, LOGIN_FAILED_MSG);
+        }
+        if (!passwordEncoder.matches(dto.getPassword(), user.getPasswordHash())) {
+            throw new BusinessException(ResultCode.UNAUTHORIZED, LOGIN_FAILED_MSG);
+        }
+
+        String mergeId = dto.getMergeGuestUserId();
+        if (mergeId != null && !mergeId.isBlank()) {
+            String gid = mergeId.trim();
+            if (!gid.equals(user.getId())) {
+                User guest = userMapper.selectById(gid);
+                if (guest == null || !Boolean.TRUE.equals(guest.getIsGuest())) {
+                    throw new BusinessException(ResultCode.PARAM_INVALID, "merge_guest_user_id 无效");
+                }
+                absorbGuestProfileStats(user, guest);
+                userMapper.updateById(user);
+                guestMergeService.mergeGuestIntoUser(gid, user.getId());
+                user = requireFreshUser(user.getId());
             }
         }
+
         return buildAuth(user);
     }
 
     @Override
     public void sendCode(SendCodeDTO dto) {
-        // TODO 接入真实短信平台；当前固定验证码用于联调
-        log.info("[模拟短信] 向 {} 发送验证码 {}（场景: {}）", dto.getPhone(), DEMO_CODE, dto.getScene());
+        log.info("[可选短信占位] {} 验证码 {}（scene: {}），当前 Web 以密码为准", dto.getPhone(), DEMO_CODE,
+                dto.getScene());
     }
 
     @Override
@@ -117,44 +154,87 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     public void logout() {
-        // 由于使用无状态 JWT，此处不做服务端注销处理；如需注销则将 token 加入黑名单。
+        // 无状态 JWT：此处不做服务端会话清理；需要时可做 token 黑名单
     }
-
-    // ---------- 私有方法 ----------
 
     private User createGuest(String deviceId) {
-        User user = new User();
-        user.setId(IdGenerator.user());
-        user.setIsGuest(true);
-        user.setDeviceId(deviceId);
-        user.setNickname("访客" + user.getId().substring(2, 8));
-        user.setJoinedAt(LocalDate.now());
-        user.setTotalCheckinDays(0);
-        user.setFixedHabitsCount(0);
-        user.setContinuousDays(0);
-        userMapper.insert(user);
-        settingsService.initDefaults(user.getId());
-        return user;
+        User u = new User();
+        u.setId(IdGenerator.user());
+        u.setIsGuest(true);
+        u.setDeviceId(deviceId);
+        u.setNickname("访客" + u.getId().substring(2, 8));
+        u.setJoinedAt(LocalDate.now());
+        u.setTotalCheckinDays(0);
+        u.setFixedHabitsCount(0);
+        u.setContinuousDays(0);
+        userMapper.insert(u);
+        settingsService.initDefaults(u.getId());
+        return u;
     }
 
-    private User createPhoneUser(String phone) {
-        User user = new User();
-        user.setId(IdGenerator.user());
-        user.setIsGuest(false);
-        user.setPhone(phone);
-        user.setNickname(defaultNickname(phone));
-        user.setJoinedAt(LocalDate.now());
-        user.setTotalCheckinDays(0);
-        user.setFixedHabitsCount(0);
-        user.setContinuousDays(0);
-        userMapper.insert(user);
-        settingsService.initDefaults(user.getId());
-        return user;
+    private User createPhoneUser(String phone, String rawPassword) {
+        User u = new User();
+        u.setId(IdGenerator.user());
+        u.setIsGuest(false);
+        u.setPhone(phone);
+        u.setPasswordHash(passwordEncoder.encode(rawPassword));
+        u.setNickname(defaultNickname(phone));
+        u.setJoinedAt(LocalDate.now());
+        u.setTotalCheckinDays(0);
+        u.setFixedHabitsCount(0);
+        u.setContinuousDays(0);
+        userMapper.insert(u);
+        settingsService.initDefaults(u.getId());
+        return u;
     }
 
-    private String defaultNickname(String phone) {
-        String tail = phone == null ? "用户" : phone.substring(Math.max(0, phone.length() - 4));
+    private User requireFreshUser(String userId) {
+        User u = userMapper.selectById(userId);
+        if (u == null) {
+            throw new BusinessException(ResultCode.INTERNAL_ERROR, "用户数据异常");
+        }
+        return u;
+    }
+
+    private static String normalizePhone(String phone) {
+        if (phone == null) {
+            return "";
+        }
+        return phone.strip();
+    }
+
+    private static String defaultNickname(String phone) {
+        String tail = phone == null || phone.isBlank() ? "用户" : phone.substring(Math.max(0, phone.length() - 4));
         return "原子用户" + tail;
+    }
+
+    /**
+     * 合并前汇总游客侧计数到正式账号（正式侧业务数据随后在 merge 中归并）。
+     */
+    private static void absorbGuestProfileStats(User target, User guest) {
+        int tCd = nz(target.getTotalCheckinDays());
+        int gCd = nz(guest.getTotalCheckinDays());
+        if (gCd > tCd) {
+            target.setTotalCheckinDays(gCd);
+        }
+        int tFixed = nz(target.getFixedHabitsCount());
+        int gFixed = nz(guest.getFixedHabitsCount());
+        if (gFixed > tFixed) {
+            target.setFixedHabitsCount(gFixed);
+        }
+        int tCo = nz(target.getContinuousDays());
+        int gCo = nz(guest.getContinuousDays());
+        if (gCo > tCo) {
+            target.setContinuousDays(gCo);
+        }
+        if ((target.getDeviceId() == null || target.getDeviceId().isBlank())
+                && guest.getDeviceId() != null && !guest.getDeviceId().isBlank()) {
+            target.setDeviceId(guest.getDeviceId());
+        }
+    }
+
+    private static int nz(Integer v) {
+        return v == null ? 0 : v;
     }
 
     private AuthVO buildAuth(User user) {

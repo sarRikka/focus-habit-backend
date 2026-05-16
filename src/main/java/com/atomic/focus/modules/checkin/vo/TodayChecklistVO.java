@@ -34,6 +34,15 @@ public class TodayChecklistVO {
         private String dailyHabit;
         @JsonProperty("duration_target")
         private Integer durationTarget;
+
+        /** PRD §7.5：考虑 shorten 场景后的当日有效目标分钟数 */
+        @JsonProperty("effective_daily_target_minutes")
+        private Integer effectiveDailyTargetMinutes;
+
+        /** 完成打卡（done/late）允许的最低时长（⌈effective/2⌉，至少 1） */
+        @JsonProperty("minimum_completed_minutes")
+        private Integer minimumCompletedMinutes;
+
         private Boolean checked;
     }
 }
