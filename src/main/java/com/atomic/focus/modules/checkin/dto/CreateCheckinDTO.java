@@ -2,7 +2,6 @@ package com.atomic.focus.modules.checkin.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.time.LocalDate;
@@ -13,8 +12,8 @@ public class CreateCheckinDTO {
     /** 默认今天 */
     private LocalDate date;
 
-    @NotNull
-    @Min(1)
+    /** 实际完成分钟数，可为 0（一键完成）；省略时按 0 处理 */
+    @Min(0)
     private Integer duration;
 
     /** done | late */

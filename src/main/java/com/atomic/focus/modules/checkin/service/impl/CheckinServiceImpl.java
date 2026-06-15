@@ -75,13 +75,9 @@ public class CheckinServiceImpl implements CheckinService {
             throw new BusinessException(ResultCode.PARAM_INVALID, "status 仅支持 done | late");
         }
         LocalDate date = dto.getDate() == null ? LocalDate.now() : dto.getDate();
-
-        int effectiveDaily = effectiveDailyTargetMinutesResolver.resolveEffectiveDailyTarget(goal, date, userId);
-        int minCompleted = EffectiveDailyTargetMinutesResolver.minimumCompletedMinutes(effectiveDaily);
-        if (dto.getDuration() == null || dto.getDuration() < minCompleted) {
-            throw new BusinessException(ResultCode.CHECKIN_MIN_DURATION_NOT_MET,
-                    String.format("打卡时长至少 %d 分钟（当日有效目标 %d 分钟的一半向上取整）",
-                            minCompleted, effectiveDaily));
+        int duration = dto.getDuration() == null ? 0 : dto.getDuration();
+        if (duration < 0) {
+            throw new BusinessException(ResultCode.PARAM_INVALID, "duration 不能为负数");
         }
 
         // client_op_id 幂等
@@ -99,7 +95,7 @@ public class CheckinServiceImpl implements CheckinService {
         Checkin existing = findByDate(goalId, date);
         if (existing != null) {
             existing.setStatus(status);
-            existing.setDuration(dto.getDuration());
+            existing.setDuration(duration);
             if (dto.getNote() != null) existing.setNote(dto.getNote());
             existing.setClientOpId(dto.getClientOpId());
             checkinMapper.updateById(existing);
@@ -110,7 +106,7 @@ public class CheckinServiceImpl implements CheckinService {
             c.setUserId(userId);
             c.setCheckinDate(date);
             c.setStatus(status);
-            c.setDuration(dto.getDuration());
+            c.setDuration(duration);
             c.setNote(dto.getNote());
             c.setClientOpId(dto.getClientOpId());
             checkinMapper.insert(c);
@@ -260,7 +256,7 @@ public class CheckinServiceImpl implements CheckinService {
             it.setDurationTarget(g.getDhDuration());
             int effective = effectiveDailyTargetMinutesResolver.resolveEffectiveDailyTarget(g, date, userId);
             it.setEffectiveDailyTargetMinutes(effective);
-            it.setMinimumCompletedMinutes(EffectiveDailyTargetMinutesResolver.minimumCompletedMinutes(effective));
+            it.setMinimumCompletedMinutes(0);
             it.setChecked(isChecked);
             items.add(it);
         }

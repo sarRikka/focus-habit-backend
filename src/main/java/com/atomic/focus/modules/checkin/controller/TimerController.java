@@ -85,7 +85,7 @@ public class TimerController {
         sessions.remove(sessionId);
 
         CreateCheckinDTO dto = new CreateCheckinDTO();
-        dto.setDuration(Math.max(1, (int) Math.ceil(s.elapsed / 60.0)));
+        dto.setDuration(Math.max(0, (int) Math.ceil(s.elapsed / 60.0)));
         dto.setStatus("done");
         if (body != null && body.get("note") != null) dto.setNote(body.get("note").toString());
         return R.ok(checkinService.checkin(s.userId, s.goalId, dto));
